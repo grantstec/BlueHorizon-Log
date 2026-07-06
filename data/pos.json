@@ -131,7 +131,9 @@
           "",
           ""
         ],
-        "arrived": false
+        "arrived": true,
+        "arrivedBy": "Grant Stec",
+        "arrivedAt": "2026-07-06T00:06:32.286Z"
       },
       {
         "cells": [
