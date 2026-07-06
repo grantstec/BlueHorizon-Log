@@ -23,7 +23,13 @@
     ],
     "vendors": {
       "Adafruit": {
-        "shipping": 0
+        "shipping": 0,
+        "s889": {
+          "status": "COMPLIANT",
+          "legalName": "ADAFRUIT INDUSTRIES LLC",
+          "by": "Grant S.",
+          "date": "2026-07-06T14:54:59.570Z"
+        }
       }
     }
   },
