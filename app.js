@@ -744,7 +744,53 @@ const VENDOR_MAP = {
   sendcutsend: 'SendCutSend', aliexpress: 'AliExpress', ebay: 'eBay',
 };
 
-const PROXY = (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u);
+/* Cross-origin fetch strategy:
+   1. public CORS proxies (fast, but blocked on some campus networks)
+   2. relay through our own GitHub Actions (slower ~30s, always works)   */
+const PROXIES = [
+  (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+  (u) => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
+  (u) => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u),
+];
+
+async function proxyFetchText(target) {
+  for (const p of PROXIES) {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      const r = await fetch(p(target), { signal: ctrl.signal });
+      clearTimeout(t);
+      if (r.ok) {
+        const text = await r.text();
+        if (text && text.length > 50) return text;
+      }
+    } catch { /* try next proxy */ }
+  }
+  return null;
+}
+
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+
+/* Relay a lookup through GitHub Actions: commit a request file, poll for the answer. */
+async function relayLookup(kind, query, onStatus) {
+  if (!cfg.token) throw new Error('needs a GitHub token (Settings)');
+  const id = uid();
+  onStatus('Direct fetch blocked — relaying via GitHub…');
+  await api.write(`data/lookups/requests/${id}.json`,
+    JSON.stringify({ kind, query, by: cfg.name || '?', at: new Date().toISOString() }),
+    `lookup: ${kind} ${String(query).slice(0, 40)}`);
+  for (let i = 1; i <= 24; i++) {
+    await sleep(5000);
+    onStatus(`Relaying via GitHub Actions… ${i * 5}s (usually ~30s)`);
+    const res = await api.readJson(`data/lookups/responses/${id}.json`, null);
+    if (res) {
+      api.remove(`data/lookups/responses/${id}.json`, 'lookup: cleanup').catch(() => {});
+      if (!res.ok) throw new Error(res.error || 'lookup failed');
+      return res.data;
+    }
+  }
+  throw new Error('Relay timed out — check the repo’s Actions tab');
+}
 
 function vendorFromUrl(url) {
   try {
@@ -875,14 +921,18 @@ function renderPobTotals(po) {
   $('pobTotals').innerHTML = `Items <b>$${t.items.toFixed(2)}</b> + shipping <b>$${t.ship.toFixed(2)}</b> = <b style="color:var(--accent)">$${t.grand.toFixed(2)}</b> total · ${po.items.length} items`;
 }
 
-/* 889 compliance lookup via the GSA SmartPay tool's public API (through a CORS proxy) */
+/* 889 compliance lookup via the GSA SmartPay tool's public API */
 async function check889(po, vendor, card) {
   const box = card.querySelector('.s889-results');
   box.classList.remove('hidden');
-  box.innerHTML = '<p class="settings-note">Searching SAM.gov via GSA 889 tool…</p>';
+  const status = (msg) => { box.innerHTML = `<p class="settings-note">${esc(msg)}</p>`; };
+  status('Searching SAM.gov via GSA 889 tool…');
   try {
-    const u = PROXY(`https://889.smartpay.gsa.gov/api/entity-information/v3/entities?samToolsSearch=${encodeURIComponent(vendor)}&page=0`);
-    const j = await fetch(u).then((r) => r.json());
+    const target = `https://889.smartpay.gsa.gov/api/entity-information/v3/entities?samToolsSearch=${encodeURIComponent(vendor)}&page=0`;
+    let j = null;
+    const direct = await proxyFetchText(target);
+    if (direct) { try { j = JSON.parse(direct); } catch {} }
+    if (!j) j = await relayLookup('889', vendor, status);
     const ents = (j.entityData || []).slice(0, 6);
     if (!ents.length) {
       box.innerHTML = '<p class="settings-note">No SAM.gov match found — verify manually in the GSA tool, then note it.</p>';
@@ -935,24 +985,34 @@ async function autofillFromLink() {
   const url = $('piUrl').value.trim();
   if (!url) { toast('Paste a product link first', true); return; }
   const note = $('piAutofillNote');
+  const status = (msg) => { note.textContent = msg; };
   if (!$('piVendor').value) $('piVendor').value = vendorFromUrl(url);
-  note.textContent = 'Fetching product page…';
+  status('Fetching product page…');
   try {
-    const html = await fetch(PROXY(url)).then((r) => r.text());
-    if (!html || html.length < 500) throw new Error('vendor blocks automated reads');
-    const tm = html.match(/<meta[^>]*(?:og:title|twitter:title)[^>]*content=["']([^"']+)/i) || html.match(/<title[^>]*>([^<]+)</i);
-    if (tm && !$('piName').value) {
-      $('piName').value = decodeEntities(tm[1]).replace(/\s*[|–-]\s*(Amazon|McMaster|DigiKey|eBay).*$/i, '').trim().slice(0, 100);
+    let info = null;
+    const html = await proxyFetchText(url);
+    if (html && html.length > 500) {
+      info = {};
+      const tm = html.match(/<meta[^>]*(?:og:title|twitter:title)[^>]*content=["']([^"']+)/i) || html.match(/<title[^>]*>([^<]+)</i);
+      if (tm) info.title = decodeEntities(tm[1]).replace(/\s*[|–-]\s*(Amazon|McMaster|DigiKey|eBay).*$/i, '').trim().slice(0, 100);
+      const pm = html.match(/og:price:amount["'][^>]*content=["']([\d.,]+)/i) ||
+                 html.match(/"price"\s*:\s*"?\$?([\d,]+\.?\d{0,2})"?/i) ||
+                 html.match(/\$\s?([\d,]+\.\d{2})/);
+      if (pm) info.price = parseFloat(pm[1].replace(/,/g, ''));
     }
-    const pm = html.match(/og:price:amount["'][^>]*content=["']([\d.,]+)/i) ||
-               html.match(/"price"\s*:\s*"?\$?([\d,]+\.?\d{0,2})"?/i) ||
-               html.match(/\$\s?([\d,]+\.\d{2})/);
-    if (pm && !$('piCost').value) $('piCost').value = parseFloat(pm[1].replace(/,/g, ''));
+    if (!info || (!info.title && !info.price)) {
+      info = await relayLookup('product', url, status);
+    }
+    if (info.title && !$('piName').value) $('piName').value = info.title;
+    if (info.price != null && !$('piCost').value) $('piCost').value = info.price;
     const qm = ($('piName').value || '').match(/(?:pack|box|bag|set) of (\d+)|(\d+)\s?[- ]?(?:pack|pcs|pieces|count|ct)\b/i);
     if (qm && !$('piQtyDesc').value) $('piQtyDesc').value = `pack of ${qm[1] || qm[2]}`;
-    note.textContent = ($('piName').value ? '✓ Got what I could — ' : '') + 'double-check name and price, then fill in the rest.';
+    else if (info.qtyDesc && !$('piQtyDesc').value) $('piQtyDesc').value = info.qtyDesc;
+    status(($('piName').value || $('piCost').value)
+      ? '✓ Got what I could — double-check name and price, then fill in the rest.'
+      : 'This vendor blocks robots entirely — fill the fields in manually.');
   } catch (e) {
-    note.textContent = `Couldn’t auto-read this page (${e.message}) — big vendors like Amazon block robots. Just fill the fields in manually.`;
+    status(`Couldn’t auto-read (${e.message}) — big vendors like Amazon block robots. Fill in manually.`);
   }
 }
 
