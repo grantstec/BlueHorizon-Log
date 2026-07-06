@@ -113,13 +113,30 @@
   <!-- Purchase orders -->
   <section id="view-pos" class="view hidden">
     <h2 class="page-title">Purchase Orders</h2>
+    <button class="ghost-btn" id="btnNewPo" style="margin-bottom:8px">＋ New purchase order (builder)</button>
     <label class="ghost-btn file-btn" for="poFileInput" style="margin-bottom:12px">
-      + Import purchase order (.xlsx / .csv)
+      ⬆ Import existing PO (.xlsx / .csv) for arrival tracking
     </label>
     <input id="poFileInput" type="file" accept=".xlsx,.xls,.csv" hidden>
     <div id="poList" class="project-list"></div>
     <div id="posEmpty" class="empty hidden"><p class="empty-title">No purchase orders yet</p>
-      <p>Import the Excel you send to the purchasing office — every line item becomes trackable.</p></div>
+      <p>Build one from product links, or import the Excel you already send to the purchasing office.</p></div>
+  </section>
+
+  <!-- PO builder -->
+  <section id="view-pob" class="view hidden">
+    <button class="back-btn" data-back="pos">&larr; Purchase Orders</button>
+    <h2 id="pobTitle" class="page-title" style="cursor:pointer" title="Tap to rename"></h2>
+    <div id="pobMeta" class="detail-meta" style="margin-bottom:12px"></div>
+    <button class="ghost-btn" id="btnAddPoItem" style="margin-bottom:12px">+ Add item (paste a product link)</button>
+    <div id="pobItems"></div>
+    <div class="home-section" style="margin-top:18px">
+      <div class="home-head"><h3>Vendors — shipping &amp; 889 compliance</h3></div>
+      <div id="pobVendors"></div>
+    </div>
+    <div id="pobTotals" class="ob-card" style="font-size:15px"></div>
+    <button class="ghost-btn" id="btnExportPo" style="margin-top:10px">📊 Export Excel for purchasing office</button>
+    <button class="text-btn danger" id="btnDeletePo" style="margin-top:8px">Delete this purchase order</button>
   </section>
 
   <!-- Single PO -->
@@ -302,6 +319,39 @@
       <p class="settings-note">Pick your name so entries and tasks are linked to you on this device.</p>
       <div id="whoList" class="more-menu"></div>
       <button class="ghost-btn" id="whoSkip">I’m not on the list</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PO item sheet ===== -->
+<div id="poItemSheet" class="sheet hidden">
+  <div class="sheet-card">
+    <div class="sheet-head">
+      <button class="text-btn" id="poItemCancel">Cancel</button>
+      <span class="sheet-title" id="poItemTitle">Add Item</span>
+      <button class="text-btn primary" id="poItemSave">Add</button>
+    </div>
+    <div class="sheet-body">
+      <div style="display:flex;gap:8px">
+        <input id="piUrl" class="input" type="url" placeholder="Paste product link (Amazon, McMaster, DigiKey…)" style="flex:1">
+        <button class="mini-btn" id="piAutofill" style="flex:0 0 auto">Autofill</button>
+      </div>
+      <p class="settings-note" id="piAutofillNote" style="margin-top:-6px"></p>
+      <input id="piName" class="input" type="text" placeholder="Part name *">
+      <input id="piVendor" class="input" type="text" placeholder="Vendor * (e.g. Amazon, McMaster)">
+      <div style="display:flex;gap:8px">
+        <input id="piCost" class="input" type="number" min="0" step="0.01" placeholder="Unit cost $ *" style="flex:1">
+        <input id="piQty" class="input" type="number" min="1" step="1" value="1" placeholder="Qty" style="flex:1">
+      </div>
+      <input id="piQtyDesc" class="input" type="text" placeholder="Qty descriptor (e.g. ‘pack of 20 bolts’)">
+      <label class="field-label">Team / Project</label>
+      <select id="piTeam" class="input select"></select>
+      <textarea id="piJust" class="input textarea" rows="2" placeholder="Justification — why does the team need this? *"></textarea>
+      <div class="seg" id="piDeliverySeg" style="align-self:flex-start">
+        <button class="seg-btn active" data-del="Delivery">Delivery</button>
+        <button class="seg-btn" data-del="Pickup">Pickup</button>
+      </div>
+      <input id="piNotes" class="input" type="text" placeholder="Notes (optional)">
     </div>
   </div>
 </div>

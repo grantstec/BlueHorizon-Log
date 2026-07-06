@@ -623,13 +623,21 @@ function renderPos() {
   list.innerHTML = '';
   $('posEmpty').classList.toggle('hidden', state.pos.length > 0);
   state.pos.forEach((po) => {
-    const arrived = po.rows.filter((r) => r.arrived).length;
     const div = document.createElement('div');
     div.className = 'project-card';
-    div.innerHTML = `<div><div class="project-name">${esc(po.name)}</div>
-        <div class="project-count">${new Date(po.uploaded).toLocaleDateString()} · ${esc(po.by || '')}</div></div>
-      <span class="project-count">${arrived}/${po.rows.length} arrived ›</span>`;
-    div.onclick = () => { state.openPo = po.id; switchView('po'); renderPoDetail(); };
+    if (po.kind === 'draft') {
+      const total = poDraftTotal(po);
+      div.innerHTML = `<div><div class="project-name">🛠 ${esc(po.name)}</div>
+          <div class="project-count">draft · started ${new Date(po.created).toLocaleDateString()} by ${esc(po.by || '?')}</div></div>
+        <span class="project-count">${po.items.length} item${po.items.length === 1 ? '' : 's'} · $${total.grand.toFixed(2)} ›</span>`;
+      div.onclick = () => openPob(po.id);
+    } else {
+      const arrived = po.rows.filter((r) => r.arrived).length;
+      div.innerHTML = `<div><div class="project-name">${esc(po.name)}</div>
+          <div class="project-count">${new Date(po.uploaded).toLocaleDateString()} · ${esc(po.by || '')}</div></div>
+        <span class="project-count">${arrived}/${po.rows.length} arrived ›</span>`;
+      div.onclick = () => { state.openPo = po.id; switchView('po'); renderPoDetail(); };
+    }
     list.appendChild(div);
   });
 }
@@ -725,6 +733,319 @@ async function notePoRow(poId, rowIdx) {
 
 function savePos(message) {
   return api.updateJson('data/pos.json', () => state.pos, message);
+}
+
+/* ----- PO builder (create POs from product links) ----- */
+
+const VENDOR_MAP = {
+  amazon: 'Amazon', mcmaster: 'McMaster', digikey: 'DigiKey', oshpark: 'OSH Park',
+  sparkfun: 'SparkFun', adafruit: 'Adafruit', grainger: 'Grainger', mouser: 'Mouser',
+  homedepot: 'Home Depot', lowes: 'Lowe’s', onlinemetals: 'Online Metals',
+  sendcutsend: 'SendCutSend', aliexpress: 'AliExpress', ebay: 'eBay',
+};
+
+const PROXY = (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u);
+
+function vendorFromUrl(url) {
+  try {
+    const h = new URL(url).hostname.replace(/^www\./, '').split('.')[0];
+    return VENDOR_MAP[h.toLowerCase()] || h.charAt(0).toUpperCase() + h.slice(1);
+  } catch { return ''; }
+}
+
+function decodeEntities(s) {
+  const el = document.createElement('textarea');
+  el.innerHTML = s;
+  return el.value;
+}
+
+function currentPob() { return state.pos.find((p) => p.id === state.openPob); }
+
+function poDraftTotal(po) {
+  const items = po.items.reduce((n, i) => n + (i.unitCost || 0) * (i.qty || 1), 0);
+  const ship = Object.values(po.vendors || {}).reduce((n, v) => n + (parseFloat(v.shipping) || 0), 0);
+  return { items, ship, grand: items + ship };
+}
+
+async function newDraftPo() {
+  if (!requireToken()) return;
+  const name = prompt('Name this purchase order:', `Order ${today()}`);
+  if (!name || !name.trim()) return;
+  const po = { id: uid(), kind: 'draft', name: name.trim(), created: new Date().toISOString(), by: cfg.name || 'Unknown', items: [], vendors: {} };
+  state.pos.unshift(po);
+  renderPos();
+  openPob(po.id);
+  try { await savePos(`po: new draft ${po.name}`); } catch (e) { toast(e.message, true); }
+}
+
+function openPob(id) {
+  state.openPob = id;
+  switchView('pob');
+  renderPob();
+}
+
+function renderPob() {
+  const po = currentPob();
+  if (!po) { switchView('pos'); return; }
+  $('pobTitle').textContent = po.name;
+  $('pobMeta').textContent = `Started ${new Date(po.created).toLocaleDateString()} by ${po.by || '?'} · draft`;
+
+  // items
+  const wrap = $('pobItems');
+  wrap.innerHTML = '';
+  if (!po.items.length) wrap.innerHTML = '<p class="settings-note">No items yet — paste a product link to get started.</p>';
+  po.items.forEach((it) => {
+    const card = document.createElement('div');
+    card.className = 'poi-card';
+    const line = (it.unitCost || 0) * (it.qty || 1);
+    card.innerHTML = `
+      <div class="poi-top"><span class="poi-name">${esc(it.name)}</span>
+        <span class="poi-price">$${line.toFixed(2)}</span></div>
+      <div class="poi-meta">
+        <span class="badge">${esc(it.vendor)}</span>
+        <span>$${(it.unitCost || 0).toFixed(2)} × ${it.qty}</span>
+        ${it.qtyDesc ? `<span>(${esc(it.qtyDesc)})</span>` : ''}
+        ${it.team ? `<span>· ${esc(projName(it.team))}</span>` : ''}
+        <span>· ${esc(it.addedBy || '?')}</span>
+      </div>
+      ${it.justification ? `<div class="poi-just">“${esc(it.justification)}”</div>` : ''}
+      <div class="poi-actions">
+        ${it.url ? '<button class="open">Open link</button>' : ''}
+        <button class="edit">Edit</button>
+        <button class="del">Remove</button>
+      </div>`;
+    const open = card.querySelector('.open');
+    if (open) open.onclick = () => window.open(it.url, '_blank', 'noopener');
+    card.querySelector('.edit').onclick = () => openPoItemSheet(it.id);
+    card.querySelector('.del').onclick = async () => {
+      if (!confirm(`Remove “${it.name}”?`)) return;
+      po.items = po.items.filter((x) => x.id !== it.id);
+      pruneVendors(po);
+      renderPob();
+      try { await savePos(`po: remove item from ${po.name}`); } catch (e) { toast(e.message, true); }
+    };
+    wrap.appendChild(card);
+  });
+
+  // vendors
+  const vw = $('pobVendors');
+  vw.innerHTML = '';
+  const vendors = [...new Set(po.items.map((i) => i.vendor))];
+  if (!vendors.length) vw.innerHTML = '<p class="settings-note">Vendors appear here as you add items — set estimated shipping and run the 889 compliance check per vendor.</p>';
+  vendors.forEach((v) => {
+    po.vendors[v] = po.vendors[v] || { shipping: 0 };
+    const info = po.vendors[v];
+    const card = document.createElement('div');
+    card.className = 'vendor-card';
+    const s = info.s889;
+    const chip = s
+      ? `<span class="s889 ${s.status === 'COMPLIANT' ? 'ok' : (/NON/.test(s.status) ? 'bad' : 'unk')}">${esc(s.status)}</span>`
+      : '<span class="s889 unk">889 NOT CHECKED</span>';
+    card.innerHTML = `
+      <div class="vendor-head">
+        <span class="vendor-name">${esc(v)}</span>
+        <span style="display:flex;gap:7px;align-items:center">${chip}
+          <button class="mini-btn check">Check 889</button></span>
+      </div>
+      ${s ? `<div class="poi-meta" style="margin-top:5px"><span>Matched: ${esc(s.legalName)} · checked by ${esc(s.by)} ${new Date(s.date).toLocaleDateString()}</span></div>` : ''}
+      <div class="vendor-ship">Est. shipping $
+        <input class="input ship" type="number" min="0" step="0.01" value="${info.shipping || 0}">
+        <a href="https://889.smartpay.gsa.gov/#/" target="_blank" rel="noopener" style="color:var(--accent);margin-left:auto;font-size:12.5px">open GSA tool ↗</a>
+      </div>
+      <div class="s889-results hidden"></div>`;
+    card.querySelector('.check').onclick = () => check889(po, v, card);
+    card.querySelector('.ship').onchange = async (ev) => {
+      info.shipping = parseFloat(ev.target.value) || 0;
+      renderPobTotals(po);
+      try { await savePos(`po: shipping ${v} ${po.name}`); } catch (e) { toast(e.message, true); }
+    };
+    vw.appendChild(card);
+  });
+
+  renderPobTotals(po);
+}
+
+function pruneVendors(po) {
+  const used = new Set(po.items.map((i) => i.vendor));
+  Object.keys(po.vendors || {}).forEach((v) => { if (!used.has(v)) delete po.vendors[v]; });
+}
+
+function renderPobTotals(po) {
+  const t = poDraftTotal(po);
+  $('pobTotals').innerHTML = `Items <b>$${t.items.toFixed(2)}</b> + shipping <b>$${t.ship.toFixed(2)}</b> = <b style="color:var(--accent)">$${t.grand.toFixed(2)}</b> total · ${po.items.length} items`;
+}
+
+/* 889 compliance lookup via the GSA SmartPay tool's public API (through a CORS proxy) */
+async function check889(po, vendor, card) {
+  const box = card.querySelector('.s889-results');
+  box.classList.remove('hidden');
+  box.innerHTML = '<p class="settings-note">Searching SAM.gov via GSA 889 tool…</p>';
+  try {
+    const u = PROXY(`https://889.smartpay.gsa.gov/api/entity-information/v3/entities?samToolsSearch=${encodeURIComponent(vendor)}&page=0`);
+    const j = await fetch(u).then((r) => r.json());
+    const ents = (j.entityData || []).slice(0, 6);
+    if (!ents.length) {
+      box.innerHTML = '<p class="settings-note">No SAM.gov match found — verify manually in the GSA tool, then note it.</p>';
+      return;
+    }
+    box.innerHTML = '<p class="settings-note">Pick the matching legal entity:</p>';
+    ents.forEach((e) => {
+      const name = e.entityRegistration?.legalBusinessName || '?';
+      const st = e.samToolsData?.eightEightNine?.statusText || 'UNKNOWN';
+      const b = document.createElement('button');
+      b.innerHTML = `${esc(name)} — <b>${esc(st)}</b>`;
+      b.onclick = async () => {
+        po.vendors[vendor].s889 = { status: st, legalName: name, by: cfg.name || '?', date: new Date().toISOString() };
+        renderPob();
+        try { await savePos(`po: 889 ${vendor} ${st}`); } catch (err) { toast(err.message, true); }
+      };
+      box.appendChild(b);
+    });
+  } catch (e) {
+    box.innerHTML = `<p class="settings-note">Lookup failed (${esc(e.message)}) — use the GSA tool link above and verify manually.</p>`;
+  }
+}
+
+/* ----- PO item sheet ----- */
+
+function openPoItemSheet(itemId = null) {
+  const po = currentPob();
+  if (!po) return;
+  state.editingPoItem = itemId;
+  const it = itemId ? po.items.find((x) => x.id === itemId) : null;
+  $('poItemTitle').textContent = it ? 'Edit Item' : 'Add Item';
+  $('poItemSave').textContent = it ? 'Save' : 'Add';
+  $('piUrl').value = it ? (it.url || '') : '';
+  $('piName').value = it ? it.name : '';
+  $('piVendor').value = it ? it.vendor : '';
+  $('piCost').value = it ? it.unitCost : '';
+  $('piQty').value = it ? it.qty : 1;
+  $('piQtyDesc').value = it ? (it.qtyDesc || '') : '';
+  $('piJust').value = it ? (it.justification || '') : '';
+  $('piNotes').value = it ? (it.notes || '') : '';
+  $('piTeam').innerHTML = state.projects.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+  if (it && it.team) $('piTeam').value = it.team;
+  document.querySelectorAll('#piDeliverySeg .seg-btn').forEach((b) =>
+    b.classList.toggle('active', b.dataset.del === ((it && it.delivery) || 'Delivery')));
+  $('piAutofillNote').textContent = '';
+  $('poItemSheet').classList.remove('hidden');
+}
+
+async function autofillFromLink() {
+  const url = $('piUrl').value.trim();
+  if (!url) { toast('Paste a product link first', true); return; }
+  const note = $('piAutofillNote');
+  if (!$('piVendor').value) $('piVendor').value = vendorFromUrl(url);
+  note.textContent = 'Fetching product page…';
+  try {
+    const html = await fetch(PROXY(url)).then((r) => r.text());
+    if (!html || html.length < 500) throw new Error('vendor blocks automated reads');
+    const tm = html.match(/<meta[^>]*(?:og:title|twitter:title)[^>]*content=["']([^"']+)/i) || html.match(/<title[^>]*>([^<]+)</i);
+    if (tm && !$('piName').value) {
+      $('piName').value = decodeEntities(tm[1]).replace(/\s*[|–-]\s*(Amazon|McMaster|DigiKey|eBay).*$/i, '').trim().slice(0, 100);
+    }
+    const pm = html.match(/og:price:amount["'][^>]*content=["']([\d.,]+)/i) ||
+               html.match(/"price"\s*:\s*"?\$?([\d,]+\.?\d{0,2})"?/i) ||
+               html.match(/\$\s?([\d,]+\.\d{2})/);
+    if (pm && !$('piCost').value) $('piCost').value = parseFloat(pm[1].replace(/,/g, ''));
+    const qm = ($('piName').value || '').match(/(?:pack|box|bag|set) of (\d+)|(\d+)\s?[- ]?(?:pack|pcs|pieces|count|ct)\b/i);
+    if (qm && !$('piQtyDesc').value) $('piQtyDesc').value = `pack of ${qm[1] || qm[2]}`;
+    note.textContent = ($('piName').value ? '✓ Got what I could — ' : '') + 'double-check name and price, then fill in the rest.';
+  } catch (e) {
+    note.textContent = `Couldn’t auto-read this page (${e.message}) — big vendors like Amazon block robots. Just fill the fields in manually.`;
+  }
+}
+
+async function savePoItem() {
+  const po = currentPob();
+  if (!po) return;
+  const name = $('piName').value.trim();
+  const vendor = $('piVendor').value.trim();
+  const cost = parseFloat($('piCost').value);
+  const just = $('piJust').value.trim();
+  if (!name || !vendor || !(cost >= 0) || !just) { toast('Need: name, vendor, unit cost, and justification', true); return; }
+  const data = {
+    name, vendor,
+    url: $('piUrl').value.trim() || undefined,
+    unitCost: cost,
+    qty: Math.max(1, parseInt($('piQty').value, 10) || 1),
+    qtyDesc: $('piQtyDesc').value.trim() || undefined,
+    team: $('piTeam').value,
+    justification: just,
+    delivery: document.querySelector('#piDeliverySeg .seg-btn.active').dataset.del,
+    notes: $('piNotes').value.trim() || undefined,
+  };
+  if (state.editingPoItem) {
+    Object.assign(po.items.find((x) => x.id === state.editingPoItem), data);
+  } else {
+    po.items.push({ id: uid(), addedBy: cfg.name || 'Unknown', addedRid: cfg.rid, added: new Date().toISOString(), ...data });
+  }
+  po.vendors[vendor] = po.vendors[vendor] || { shipping: 0 };
+  pruneVendors(po);
+  $('poItemSheet').classList.add('hidden');
+  renderPob();
+  renderPos();
+  try { await savePos(`po: ${state.editingPoItem ? 'edit' : 'add'} ${name} (${po.name})`); toast('Saved ✓'); }
+  catch (e) { toast(e.message, true); }
+}
+
+/* ----- PO Excel export (mirrors the team's purchasing-office format) ----- */
+
+async function exportPoXlsx() {
+  const po = currentPob();
+  if (!po || !po.items.length) { toast('Add items first', true); return; }
+  try {
+    const XLSX = await loadXLSX();
+    const header = ['889?', 'Part Name', 'Team/Project', 'Justification', 'Vendor', 'Unit Cost',
+      'Quantity', 'Q. Descriptor', 'Shipping', 'Total Cost', 'Delivery/Pickup', 'Link', 'Requested By', 'Notes'];
+    const rows = [header];
+    const vendors = [...new Set(po.items.map((i) => i.vendor))];
+    let grand = 0;
+    vendors.forEach((v) => {
+      rows.push(['', v, '', '', '', '', '', '', '', '', '', '', '', '']); // vendor section header
+      const vinfo = po.vendors[v] || {};
+      const s889 = vinfo.s889 ? (vinfo.s889.status === 'COMPLIANT' ? 'Yes' : (/NON/.test(vinfo.s889.status) ? 'NO' : '?')) : '';
+      const ship = parseFloat(vinfo.shipping) || 0;
+      po.items.filter((i) => i.vendor === v).forEach((i, idx) => {
+        const line = (i.unitCost || 0) * (i.qty || 1);
+        grand += line;
+        rows.push([s889, i.name, projName(i.team || ''), i.justification || '', v,
+          i.unitCost, i.qty, i.qtyDesc || '', idx === 0 ? ship : '', line,
+          i.delivery || 'Delivery', i.url || '', i.addedBy || '', i.notes || '']);
+      });
+      grand += ship;
+    });
+    rows.push([]);
+    rows.push(['', '', '', '', '', '', '', '', 'GRAND TOTAL', grand, '', '', '', '']);
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 5 }, { wch: 34 }, { wch: 18 }, { wch: 34 }, { wch: 14 }, { wch: 9 },
+      { wch: 8 }, { wch: 16 }, { wch: 9 }, { wch: 10 }, { wch: 13 }, { wch: 40 }, { wch: 14 }, { wch: 18 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, po.name.slice(0, 30).replace(/[\\/?*[\]:]/g, ' '));
+    XLSX.writeFile(wb, `${po.name.replace(/[^\w.-]+/g, '_')}.xlsx`);
+    toast('Excel exported ✓');
+  } catch (e) { toast(e.message, true); }
+}
+
+async function deleteDraftPo() {
+  const po = currentPob();
+  if (!po) return;
+  if (!confirm(`Delete “${po.name}” and all its items?`)) return;
+  state.pos = state.pos.filter((p) => p.id !== po.id);
+  switchView('pos');
+  renderPos();
+  try { await savePos(`po: delete draft ${po.name}`); } catch (e) { toast(e.message, true); }
+}
+
+async function renamePob() {
+  const po = currentPob();
+  if (!po) return;
+  const name = prompt('Rename purchase order:', po.name);
+  if (!name || !name.trim()) return;
+  po.name = name.trim();
+  renderPob();
+  renderPos();
+  try { await savePos(`po: rename ${po.name}`); } catch (e) { toast(e.message, true); }
 }
 
 /* ----- avatars & profile ----- */
@@ -1419,12 +1740,20 @@ function runSearch(q) {
     });
   }
 
-  const pos = state.pos.filter((p) => hit(p.name) || p.rows.some((r) => r.cells.some((c) => hit(c))));
+  const pos = state.pos.filter((p) => hit(p.name) ||
+    (p.rows || []).some((r) => r.cells.some((c) => hit(c))) ||
+    (p.items || []).some((i) => hit(i.name) || hit(i.vendor) || hit(i.justification)));
   if (pos.length) {
     group(`Purchase Orders (${pos.length})`);
     pos.slice(0, 10).forEach((p) => {
       total++;
-      item(mark(p.name), `${p.rows.filter((r) => r.arrived).length}/${p.rows.length} arrived`, () => { state.openPo = p.id; switchView('po'); renderPoDetail(); });
+      const sub = p.kind === 'draft'
+        ? `draft · ${(p.items || []).length} items`
+        : `${p.rows.filter((r) => r.arrived).length}/${p.rows.length} arrived`;
+      item(mark(p.name), sub, () => {
+        if (p.kind === 'draft') openPob(p.id);
+        else { state.openPo = p.id; switchView('po'); renderPoDetail(); }
+      });
     });
   }
 
@@ -1511,13 +1840,13 @@ async function testConnection() {
 
 /* ----- navigation & helpers ----- */
 
-const VIEWS = ['home', 'feed', 'photos', 'projects', 'project', 'meetings', 'pos', 'po', 'roster', 'resources'];
+const VIEWS = ['home', 'feed', 'photos', 'projects', 'project', 'meetings', 'pos', 'po', 'pob', 'roster', 'resources'];
 
 function switchView(v) {
   state.view = v;
   VIEWS.forEach((name) => $('view-' + name).classList.toggle('hidden', name !== v));
   document.querySelectorAll('.tabbar .tab[data-view]').forEach((t) => {
-    t.classList.toggle('active', t.dataset.view === v || (t.dataset.view === 'pos' && v === 'po'));
+    t.classList.toggle('active', t.dataset.view === v || (t.dataset.view === 'pos' && (v === 'po' || v === 'pob')));
   });
   $('tabMore').classList.toggle('active', ['photos', 'projects', 'project', 'meetings', 'roster', 'resources'].includes(v));
   window.scrollTo(0, 0);
@@ -1638,11 +1967,25 @@ function wire() {
   $('taskSave').onclick = saveTask;
   $('taskDelete').onclick = deleteTask;
 
-  // PO import
+  // PO import + builder
   $('poFileInput').onchange = (ev) => {
     if (ev.target.files[0]) importPoFile(ev.target.files[0]);
     ev.target.value = '';
   };
+  $('btnNewPo').onclick = newDraftPo;
+  $('btnAddPoItem').onclick = () => { if (requireToken()) openPoItemSheet(null); };
+  $('poItemCancel').onclick = () => $('poItemSheet').classList.add('hidden');
+  $('poItemSave').onclick = savePoItem;
+  $('piAutofill').onclick = autofillFromLink;
+  document.querySelectorAll('#piDeliverySeg .seg-btn').forEach((b) => {
+    b.onclick = () => {
+      document.querySelectorAll('#piDeliverySeg .seg-btn').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+    };
+  });
+  $('btnExportPo').onclick = exportPoXlsx;
+  $('btnDeletePo').onclick = deleteDraftPo;
+  $('pobTitle').onclick = renamePob;
 
   // search
   $('btnSearch').onclick = () => {
@@ -1663,7 +2006,7 @@ function wire() {
   $('sheetViewerClose').onclick = () => $('sheetViewer').classList.add('hidden');
   $('whoSkip').onclick = () => { localStorage.setItem('bh_who_skipped', '1'); $('whoSheet').classList.add('hidden'); };
 
-  ['compose', 'entrySheet', 'settings', 'moreSheet', 'taskSheet', 'searchOverlay', 'sheetViewer', 'profileSheet'].forEach((id) => {
+  ['compose', 'entrySheet', 'settings', 'moreSheet', 'taskSheet', 'searchOverlay', 'sheetViewer', 'profileSheet', 'poItemSheet'].forEach((id) => {
     $(id).addEventListener('click', (e) => { if (e.target === $(id)) $(id).classList.add('hidden'); });
   });
 }
