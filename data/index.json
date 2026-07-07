@@ -1,1 +1,16 @@
-[]
+[
+  {
+    "id": "2026-07-07-mrasfqtl",
+    "type": "log",
+    "project": "engine",
+    "title": "test fire thermal",
+    "body": "thermal image",
+    "author": "Grant Stec",
+    "authorRid": "",
+    "date": "2026-07-07T15:12:38.793Z",
+    "photos": [
+      "data/photos/2026-07-07-mrasfqtl/1-mrasfqtl.jpg"
+    ],
+    "files": []
+  }
+]
