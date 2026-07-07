@@ -1953,6 +1953,7 @@ function wire() {
   });
   $('moreJournal').onclick = () => { $('moreSheet').classList.add('hidden'); state.composeType = 'journal'; openCompose(); };
   $('moreOnboard').onclick = () => { $('moreSheet').classList.add('hidden'); openOnboarding(); };
+  $('moreEngineLab').onclick = () => { $('moreSheet').classList.add('hidden'); window.open('engine-lab.html', '_blank', 'noopener'); };
   $('btnProfile').onclick = openProfile;
   $('profileClose').onclick = () => $('profileSheet').classList.add('hidden');
   $('profileSwitch').onclick = () => { $('profileSheet').classList.add('hidden'); openWhoPicker(); };

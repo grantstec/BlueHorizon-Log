@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1220">
+<title>BlueHorizon Engine Lab</title>
+<style>
+:root {
+  --bg:#0b1220; --bg-raise:#111b2e; --bg-card:#14203a; --line:rgba(255,255,255,.08);
+  --text:#e8edf6; --dim:#93a1b8; --accent:#4da3ff; --accent-soft:rgba(77,163,255,.14);
+  --ok:#4ade80; --warn:#fbbf24; --bad:#ff6b6b;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding-bottom:60px}
+.wrap{max-width:1000px;margin:0 auto;padding:18px 16px}
+h1{font-size:22px;display:flex;gap:10px;align-items:center;margin:8px 0 2px}
+h1 b{color:var(--accent)}
+.sub{color:var(--dim);font-size:13.5px;margin-bottom:18px}
+h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin:26px 0 10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:10px}
+.field{background:var(--bg-card);border:1px solid var(--line);border-radius:10px;padding:9px 12px}
+.field label{display:block;font-size:11.5px;color:var(--dim);margin-bottom:2px}
+.field input,.field select{width:100%;background:transparent;border:0;color:var(--text);font:inherit;font-weight:650;outline:0}
+.btn{background:var(--accent);color:#04101f;border:0;border-radius:10px;padding:12px 22px;font:inherit;font-weight:700;cursor:pointer;margin-top:14px}
+.btn:active{transform:scale(.98)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:12px}
+.stat{background:var(--bg-card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.stat .v{font-size:20px;font-weight:750;color:var(--accent)}
+.stat .k{font-size:11.5px;color:var(--dim)}
+.warnbox{border-radius:10px;padding:10px 13px;font-size:13.5px;margin-top:8px;border:1px solid}
+.warnbox.bad{background:rgba(255,107,107,.08);border-color:rgba(255,107,107,.4);color:#ffb4b4}
+.warnbox.warn{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.4);color:#ffe08a}
+.warnbox.ok{background:rgba(74,222,128,.07);border-color:rgba(74,222,128,.35);color:#a7f3c0}
+canvas{width:100%;background:var(--bg-card);border:1px solid var(--line);border-radius:12px;margin-top:12px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin-top:10px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
+th{color:var(--dim);font-size:11.5px;text-transform:uppercase}
+.note{color:var(--dim);font-size:13px;margin-top:8px}
+.svgbox{background:var(--bg-card);border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:12px;overflow-x:auto}
+a{color:var(--accent)}
+.guide{background:var(--bg-card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:10px;font-size:14px}
+.guide ol{margin:8px 0 0 20px}
+.guide li{margin-bottom:6px}
+.disclaimer{margin-top:30px;padding:14px;border:1px dashed var(--line);border-radius:12px;color:var(--dim);font-size:12.5px}
+.seg{display:inline-flex;background:var(--bg-card);border:1px solid var(--line);border-radius:9px;padding:3px;margin-top:2px}
+.seg button{background:none;border:0;color:var(--dim);font:inherit;font-size:13px;padding:5px 12px;border-radius:7px;cursor:pointer}
+.seg button.on{background:var(--accent-soft);color:var(--accent);font-weight:650}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🔥 BlueHorizon <b>Engine Lab</b></h1>
+  <div class="sub">0-D feed-system + combustion model for the N₂O / IPA engine — blowdown, line &amp; channel losses, injector coupling, thrust profile, and a manually-machinable coax injector designer. <b>Model, not gospel:</b> verify with cold-flow + hot-fire.</div>
+
+  <h2>Feed system</h2>
+  <div class="grid">
+    <div class="field"><label>N₂O load (lb)</label><input id="mOx" type="number" value="5" step="0.1"></div>
+    <div class="field"><label>N₂O start temp (°F) → sets tank pressure</label><input id="tOx" type="number" value="68" step="1"></div>
+    <div class="field"><label>Tank ullage at start (%)</label><input id="ullage" type="number" value="20" step="1"></div>
+    <div class="field"><label>IPA load (lb)</label><input id="mF" type="number" value="2" step="0.1"></div>
+    <div class="field"><label>Piston pressure drop (psi)</label><input id="pistonDp" type="number" value="20" step="1"></div>
+    <div class="field"><label>Line length, each side (ft)</label><input id="lineL" type="number" value="2" step="0.1"></div>
+    <div class="field"><label>Line inner dia (in)</label><input id="lineD" type="number" value="0.15" step="0.01"></div>
+    <div class="field"><label>Extra ox channel loss K (velocity heads)</label><input id="kOx" type="number" value="2" step="0.5"></div>
+    <div class="field"><label>Extra fuel channel loss K (velocity heads)</label><input id="kF" type="number" value="2" step="0.5"></div>
+  </div>
+  <p class="note">Channel loss K = Σ(velocity heads) through the injector's internal galleries/passages — bends, area changes, distribution channels. Get real values from a SimScale cold-flow of your Onshape model (guide at bottom) or water-flow testing; 2–4 is a typical starting guess for a couple of bends and a gallery.</p>
+
+  <h2>Injector orifices (current design)</h2>
+  <div class="grid">
+    <div class="field"><label>Ox orifice total area (in²) — or use designer below</label><input id="aOx" type="number" value="0.0055" step="0.0005"></div>
+    <div class="field"><label>Fuel orifice total area (in²)</label><input id="aF" type="number" value="0.0021" step="0.0005"></div>
+    <div class="field"><label>Ox discharge coeff Cd</label><input id="cdOx" type="number" value="0.7" step="0.05"></div>
+    <div class="field"><label>Fuel discharge coeff Cd</label><input id="cdF" type="number" value="0.7" step="0.05"></div>
+    <div class="field"><label>N₂O two-phase derate (Dyer-ish, 0.7–1)</label><input id="tp" type="number" value="0.85" step="0.05"></div>
+  </div>
+
+  <h2>Chamber &amp; nozzle</h2>
+  <div class="grid">
+    <div class="field"><label>Throat dia (in)</label><input id="dt" type="number" value="0.56" step="0.01"></div>
+    <div class="field"><label>Expansion ratio ε</label><input id="eps" type="number" value="3.5" step="0.1"></div>
+    <div class="field"><label>c* efficiency η (mixing quality, 0.7–0.98)</label><input id="etaC" type="number" value="0.9" step="0.01"></div>
+    <div class="field"><label>Nozzle efficiency λ</label><input id="lam" type="number" value="0.97" step="0.01"></div>
+    <div class="field"><label>Ambient pressure (psi)</label><input id="pa" type="number" value="11.8" step="0.1"></div>
+  </div>
+
+  <button class="btn" id="run">Run simulation</button>
+
+  <h2>Steady state (t = 0)</h2>
+  <div class="cards" id="stats"></div>
+  <div id="warnings"></div>
+
+  <h2>Burn profile (blowdown)</h2>
+  <canvas id="chart" width="960" height="320"></canvas>
+  <div class="note" id="burnSummary"></div>
+
+  <h2>Coax shear injector designer <span style="text-transform:none;color:var(--text)">— 2" body, manual lathe</span></h2>
+  <div class="note">Sized from the t=0 flows above. Coax with two liquids has weak shear atomization — N₂O flashing helps, but treat this as a starting point and water-test it. Toggle which propellant takes the center post: at your flow split, <b>fuel-centered usually machines better</b> (bigger annulus gap).</div>
+  <div style="margin-top:8px">
+    <span class="seg" id="cfgSeg">
+      <button data-cfg="fuelCenter" class="on">Fuel center / Ox annulus</button>
+      <button data-cfg="oxCenter">Ox center / Fuel annulus</button>
+    </span>
+  </div>
+  <div class="grid" style="margin-top:10px">
+    <div class="field"><label>Post wall thickness (in)</label><input id="wall" type="number" value="0.028" step="0.002"></div>
+    <div class="field"><label>Min machinable annulus gap (in)</label><input id="minGap" type="number" value="0.010" step="0.001"></div>
+    <div class="field"><label>Recess (× post OD)</label><input id="recess" type="number" value="0.5" step="0.1"></div>
+  </div>
+  <div class="cards" id="coaxStats"></div>
+  <div id="coaxWarnings"></div>
+  <div class="svgbox" id="drawing"></div>
+  <div id="machining"></div>
+
+  <h2>Getting real CFD (channel losses &amp; mixing)</h2>
+  <div class="guide">
+    <b>Channel pressure losses from your Onshape CAD — SimScale workflow (free, ~1 evening):</b>
+    <ol>
+      <li>In Onshape: create the <b>fluid volume</b> (Boolean: enclose the internal passages, subtract the metal). Export as STEP.</li>
+      <li>Make a free account at <a href="https://www.simscale.com" target="_blank" rel="noopener">simscale.com</a> → new project → upload the STEP.</li>
+      <li>Analysis: <b>Incompressible</b>. Fluid: water as an IPA stand-in (or add IPA: ρ 786 kg/m³, μ 2.4 mPa·s). For the N₂O side, run liquid at saturated density (~770 kg/m³ @ 68 °F) — this ignores flashing, so treat the loss as a lower bound.</li>
+      <li>Boundary conditions: <b>pressure inlet</b> at the port (your feed pressure), <b>pressure outlet</b> at the orifice exits (chamber pressure), no-slip walls.</li>
+      <li>Mesh: standard, with refinement on small channels (aim ≥ 8–10 cells across the narrowest passage).</li>
+      <li>Result: mass flow at the given ΔP → your effective CdA and channel K. Feed those numbers into the fields above.</li>
+    </ol>
+    <b>Mixing / combustion (why thrust dropped with bigger holes):</b> reacting CFD is genuinely hard — before burning compute time on it, check the 0-D warnings above: if ΔP/Pc fell below ~15 %, atomization degrades and η drops, which this model shows directly. For real combustion simulation, talk to the Astro dept about <b>ANSYS Fluent / Rocket Propulsion Analysis (RPA)</b> licenses and run <a href="https://cearun.grc.nasa.gov" target="_blank" rel="noopener">NASA CEA</a> to replace this page's approximate c* table with exact values.
+  </div>
+
+  <div class="disclaimer">
+    ⚠ Educational model. N₂O properties and CEA values are approximations; the two-phase injector model is a derated SPI (not full Dyer/HEM); blowdown assumes equilibrium saturation. It will catch systems-level mistakes (ΔP margin, O/F drift, feed coupling) but is not a substitute for cold-flow, water-flow, and incremental hot-fire testing. N₂O is an energetic oxidizer — follow your range safety procedures.
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ================= property data (approximate) ================= */
+// N2O saturation: [T°C, Pvap psia, rho_liq kg/m3, rho_vap kg/m3, h_fg kJ/kg]
+const N2O = [
+  [-20, 261, 995, 47, 258],
+  [-10, 348, 960, 64, 244],
+  [0,   454, 907, 84, 228],
+  [5,   512, 884, 95, 219],
+  [10,  575, 858, 108, 205],
+  [15,  645, 828, 122, 190],
+  [20,  734, 786, 133, 167],
+  [25,  831, 743, 156, 141],
+  [30,  927, 688, 190, 112],
+  [35, 1035, 580, 240, 65],
+];
+function n2o(T) { // linear interp on °C
+  const t = Math.max(-20, Math.min(35, T));
+  for (let i = 0; i < N2O.length - 1; i++) {
+    const a = N2O[i], b = N2O[i + 1];
+    if (t >= a[0] && t <= b[0]) {
+      const f = (t - a[0]) / (b[0] - a[0]);
+      return { P: a[1]+f*(b[1]-a[1]), rhoL: a[2]+f*(b[2]-a[2]), rhoV: a[3]+f*(b[3]-a[3]), hfg: a[4]+f*(b[4]-a[4]) };
+    }
+  }
+  return { P: 1035, rhoL: 580, rhoV: 240, hfg: 65 };
+}
+// approx CEA for N2O/IPA @ ~300 psi: c* (m/s) & gamma vs O/F  — replace with your own CEA run!
+const CEA = [ // [OF, cstar, gamma]
+  [1.5, 1360, 1.26],[2.0, 1465, 1.25],[2.5, 1530, 1.24],[3.0, 1572, 1.23],
+  [3.5, 1595, 1.22],[4.0, 1600, 1.22],[4.5, 1588, 1.23],[5.0, 1562, 1.24],[6.0, 1500, 1.25],
+];
+function cea(OF) {
+  const x = Math.max(1.5, Math.min(6, OF));
+  for (let i = 0; i < CEA.length - 1; i++) {
+    const a = CEA[i], b = CEA[i + 1];
+    if (x >= a[0] && x <= b[0]) {
+      const f = (x - a[0]) / (b[0] - a[0]);
+      return { cstar: a[1]+f*(b[1]-a[1]), gamma: a[2]+f*(b[2]-a[2]) };
+    }
+  }
+  return { cstar: 1500, gamma: 1.25 };
+}
+const RHO_IPA = 786, MU_IPA = 2.4e-3, MU_N2O = 0.08e-3, CP_N2O_L = 2800; // J/kgK approx
+const PSI = 6894.76, IN2 = 6.4516e-4, LB = 0.4536, G0 = 9.80665;
+
+/* ================= hydraulics ================= */
+function lineK(L_m, D_m, rho, mu, mdotGuess) {
+  const A = Math.PI * D_m * D_m / 4;
+  const v = Math.max(0.1, mdotGuess / (rho * A));
+  const Re = rho * v * D_m / mu;
+  const f = Re < 2300 ? 64 / Re : 0.3164 / Math.pow(Re, 0.25); // Blasius
+  return (f * L_m / D_m) / (2 * rho * A * A); // ΔP = K * mdot²  [Pa per (kg/s)²]
+}
+function chanK(nVH, rho, A_ref) { // n velocity heads at orifice-area velocity
+  return nVH / (2 * rho * A_ref * A_ref);
+}
+// closed-form mdot: Ps - Pc = mdot²( 1/(2ρ(CdA)²) + Kline + Kchan )
+function mdotSide(Ps, Pc, CdA, rho, Kline, Kchan, derate) {
+  const dp = Ps - Pc;
+  if (dp <= 0 || CdA <= 0) return { mdot: 0, dpOrifice: 0 };
+  const Korf = 1 / (2 * rho * CdA * CdA);
+  const mdot = Math.sqrt(dp / (Korf + Kline + Kchan)) * derate;
+  return { mdot, dpOrifice: Korf * (mdot/derate) * (mdot/derate) };
+}
+
+/* ================= nozzle ================= */
+function machFromEps(eps, g) { // supersonic solution
+  let M = 2.5;
+  for (let i = 0; i < 60; i++) {
+    const f = (1 / M) * Math.pow((2 / (g + 1)) * (1 + (g - 1) / 2 * M * M), (g + 1) / (2 * (g - 1))) - eps;
+    const dM = 1e-5;
+    const f2 = (1 / (M+dM)) * Math.pow((2 / (g + 1)) * (1 + (g - 1) / 2 * (M+dM) * (M+dM)), (g + 1) / (2 * (g - 1))) - eps;
+    M -= f / ((f2 - f) / dM);
+    M = Math.max(1.01, Math.min(6, M));
+  }
+  return M;
+}
+function thrustCoeff(g, eps, Pc, Pa) {
+  const Me = machFromEps(eps, g);
+  const Pe = Pc * Math.pow(1 + (g - 1) / 2 * Me * Me, -g / (g - 1));
+  const term = (2*g*g/(g-1)) * Math.pow(2/(g+1), (g+1)/(g-1)) * (1 - Math.pow(Pe/Pc, (g-1)/g));
+  return { Cf: Math.sqrt(term) + (Pe - Pa) / Pc * eps, Pe };
+}
+
+/* ================= coupled solve at one instant ================= */
+function solveInstant(st, inp) {
+  const oxProps = n2o(st.T);
+  const PsOx = oxProps.P * PSI;
+  const PsF = Math.max(0, (oxProps.P - inp.pistonDp) * PSI);
+  const rhoOx = oxProps.rhoL;
+  const At = Math.PI * Math.pow(inp.dt * 0.0254, 2) / 4;
+  let Pc = 0.5 * PsOx;
+  let out = null;
+  for (let i = 0; i < 60; i++) {
+    const KlOx = lineK(inp.lineL * 0.3048, inp.lineD * 0.0254, rhoOx, MU_N2O, out ? out.mdotOx : 0.15);
+    const KlF = lineK(inp.lineL * 0.3048, inp.lineD * 0.0254, RHO_IPA, MU_IPA, out ? out.mdotF : 0.06);
+    const KcOx = chanK(inp.kOx, rhoOx, inp.aOx * IN2);
+    const KcF = chanK(inp.kF, RHO_IPA, inp.aF * IN2);
+    const ox = mdotSide(PsOx, Pc, inp.cdOx * inp.aOx * IN2, rhoOx, KlOx, KcOx, inp.tp);
+    const fu = mdotSide(PsF, Pc, inp.cdF * inp.aF * IN2, RHO_IPA, KlF, KcF, 1);
+    const mdot = ox.mdot + fu.mdot;
+    if (mdot <= 1e-6) return null;
+    const OF = fu.mdot > 1e-9 ? ox.mdot / fu.mdot : 99;
+    const c = cea(OF);
+    const cstarEff = c.cstar * inp.etaC * atomizationPenalty(ox.dpOrifice, fu.dpOrifice, Pc);
+    const PcNew = mdot * cstarEff / At;
+    Pc = Pc + 0.5 * (PcNew - Pc);
+    const tc = thrustCoeff(c.gamma, inp.eps, Pc, inp.pa * PSI);
+    out = { Pc, mdotOx: ox.mdot, mdotF: fu.mdot, OF, cstar: cstarEff, gamma: c.gamma,
+      dpOx: ox.dpOrifice, dpF: fu.dpOrifice, PsOx, PsF, rhoOx,
+      F: inp.lam * tc.Cf * Pc * At, Cf: tc.Cf, Pe: tc.Pe, At, T: st.T };
+  }
+  return out;
+}
+// soft penalty when injector ΔP/Pc drops below ~15% (empirical, explains "bigger holes, less thrust")
+function atomizationPenalty(dpOx, dpF, Pc) {
+  const r = Math.min(dpOx, dpF) / Math.max(1, Pc);
+  if (r >= 0.15) return 1;
+  return Math.max(0.6, 0.6 + 0.4 * (r / 0.15));
+}
+
+/* ================= blowdown time march ================= */
+function simulate(inp) {
+  const T0 = (inp.tOx - 32) / 1.8;
+  const p0 = n2o(T0);
+  const mOx0 = inp.mOx * LB, mF0 = inp.mF * LB;
+  const Vtank = (mOx0 / p0.rhoL) / (1 - inp.ullage / 100);
+  let st = { T: T0, mOx: mOx0, mF: mF0 };
+  const hist = [];
+  const dt = 0.05;
+  for (let t = 0; t < 60; t += dt) {
+    if (st.mOx <= 0.01 || st.mF <= 0.005) break;
+    const s = solveInstant(st, inp);
+    if (!s || s.Pc < 20 * PSI) break;
+    hist.push({ t, F: s.F, Pc: s.Pc, OF: s.OF, Ptank: s.PsOx, mOx: st.mOx, mF: st.mF, dpOx: s.dpOx, dpF: s.dpF });
+    st.mOx -= s.mdotOx * dt;
+    st.mF -= s.mdotF * dt;
+    // vaporization to fill freed volume → evaporative cooling
+    const props = n2o(st.T);
+    const Vliq = st.mOx / props.rhoL;
+    const Vull = Math.max(0, Vtank - Vliq);
+    const dVull = (s.mdotOx * dt) / props.rhoL;
+    const mVap = dVull * props.rhoV;
+    st.T -= (mVap * props.hfg * 1000) / Math.max(0.05, st.mOx * CP_N2O_L);
+  }
+  return hist;
+}
+
+/* ================= UI ================= */
+const $ = (id) => document.getElementById(id);
+function inputs() {
+  const g = (id) => parseFloat($(id).value) || 0;
+  return { mOx: g('mOx'), tOx: g('tOx'), ullage: g('ullage'), mF: g('mF'), pistonDp: g('pistonDp'),
+    lineL: g('lineL'), lineD: g('lineD'), kOx: g('kOx'), kF: g('kF'),
+    aOx: g('aOx'), aF: g('aF'), cdOx: g('cdOx'), cdF: g('cdF'), tp: g('tp'),
+    dt: g('dt'), eps: g('eps'), etaC: g('etaC'), lam: g('lam'), pa: g('pa'),
+    wall: g('wall'), minGap: g('minGap'), recess: g('recess') };
+}
+function stat(k, v) { return `<div class="stat"><div class="v">${v}</div><div class="k">${k}</div></div>`; }
+function warn(cls, txt) { return `<div class="warnbox ${cls}">${txt}</div>`; }
+
+let lastSteady = null;
+function run() {
+  const inp = inputs();
+  const hist = simulate(inp);
+  if (!hist.length) { $('stats').innerHTML = ''; $('warnings').innerHTML = warn('bad', 'No solution — chamber can’t sustain pressure with these inputs (check areas / pressures).'); return; }
+  const s0 = hist[0];
+  lastSteady = { hist, inp };
+  const lbf = (N) => (N / 4.448).toFixed(1);
+  const psi = (Pa) => (Pa / PSI).toFixed(0);
+  $('stats').innerHTML =
+    stat('Thrust (t=0)', lbf(s0.F) + ' lbf') +
+    stat('Chamber pressure', psi(s0.Pc) + ' psi') +
+    stat('O/F ratio', s0.OF.toFixed(2)) +
+    stat('Ox flow', (hist[0] ? (lastMdot(hist, inp).mdotOx * 2.205).toFixed(2) : '?') + ' lb/s') +
+    stat('Fuel flow', (lastMdot(hist, inp).mdotF * 2.205).toFixed(2) + ' lb/s') +
+    stat('Ox ΔP / Pc', pct(s0.dpOx, s0.Pc)) +
+    stat('Fuel ΔP / Pc', pct(s0.dpF, s0.Pc)) +
+    stat('Isp (sl, effective)', (s0.F / (lastMdot(hist, inp).mdotTot * G0)).toFixed(0) + ' s');
+  const w = [];
+  if (s0.dpOx / s0.Pc < 0.15) w.push(warn('bad', `⚠ Ox injector ΔP is ${pct(s0.dpOx, s0.Pc)} of Pc — below the ~15–20 % rule. Expect chug instability and poor atomization (this is the “bigger holes, less thrust” failure). Shrink ox orifice area.`));
+  if (s0.dpF / s0.Pc < 0.15) w.push(warn('bad', `⚠ Fuel injector ΔP is ${pct(s0.dpF, s0.Pc)} of Pc — below the ~15–20 % rule. Shrink fuel orifice area.`));
+  if (s0.OF > 4.8) w.push(warn('warn', `O/F = ${s0.OF.toFixed(1)} is oxidizer-rich of optimum (~3.5–4) — hot, inefficient, hard on the chamber.`));
+  if (s0.OF < 2.2) w.push(warn('warn', `O/F = ${s0.OF.toFixed(1)} is fuel-rich of optimum (~3.5–4) — cool and sooty, thrust left on the table.`));
+  const burnT = hist[hist.length - 1].t;
+  const oxLeft = hist[hist.length - 1].mOx / LB, fLeft = hist[hist.length - 1].mF / LB;
+  if (fLeft < 0.05 && oxLeft > 0.4) w.push(warn('warn', `Fuel runs out first with ${oxLeft.toFixed(1)} lb N₂O left — at your 5:2 load and this O/F that's expected; leftover ox vents or burns oxidizer-rich at burnout.`));
+  if (oxLeft < 0.05 && fLeft > 0.2) w.push(warn('warn', `Ox runs out first with ${fLeft.toFixed(1)} lb IPA left.`));
+  if (s0.Pe < 0.35 * inp.pa * PSI) w.push(warn('warn', `Nozzle exit pressure ${psi(s0.Pe)} psi < 0.35×ambient — flow-separation risk; consider lower ε.`));
+  if (!w.length) w.push(warn('ok', '✓ No red flags: ΔP margins healthy, O/F sane.'));
+  $('warnings').innerHTML = w.join('');
+  const avgF = hist.reduce((a, h) => a + h.F, 0) / hist.length;
+  $('burnSummary').textContent = `Burn ≈ ${burnT.toFixed(1)} s · average thrust ≈ ${lbf(avgF)} lbf · total impulse ≈ ${(avgF * burnT / 4.448).toFixed(0)} lbf·s · tank ends at ${((hist[hist.length-1].Ptank)/PSI).toFixed(0)} psi. Blowdown drops tank pressure as N₂O self-cools, so thrust decays through the burn.`;
+  drawChart(hist);
+  coax();
+}
+function lastMdot(hist, inp) {
+  const s = solveInstant({ T: (inp.tOx - 32) / 1.8, mOx: 1, mF: 1 }, inp);
+  return { mdotOx: s.mdotOx, mdotF: s.mdotF, mdotTot: s.mdotOx + s.mdotF };
+}
+function pct(a, b) { return (100 * a / Math.max(1, b)).toFixed(0) + ' %'; }
+
+function drawChart(hist) {
+  const c = $('chart'), ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  const P = { l: 55, r: 55, t: 18, b: 30 };
+  const W = c.width - P.l - P.r, H = c.height - P.t - P.b;
+  const tMax = hist[hist.length - 1].t || 1;
+  const fMax = Math.max(...hist.map(h => h.F)) / 4.448 * 1.15;
+  const pMax = Math.max(...hist.map(h => h.Ptank)) / PSI * 1.1;
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.fillStyle = '#93a1b8'; ctx.font = '11px sans-serif';
+  for (let i = 0; i <= 4; i++) {
+    const y = P.t + H * i / 4;
+    ctx.beginPath(); ctx.moveTo(P.l, y); ctx.lineTo(P.l + W, y); ctx.stroke();
+    ctx.fillText((fMax * (1 - i / 4)).toFixed(0) + ' lbf', 6, y + 4);
+    ctx.fillText((pMax * (1 - i / 4)).toFixed(0) + ' psi', P.l + W + 6, y + 4);
+  }
+  for (let i = 0; i <= 6; i++) {
+    const x = P.l + W * i / 6;
+    ctx.fillText((tMax * i / 6).toFixed(0) + 's', x - 6, c.height - 8);
+  }
+  const line = (get, max, color) => {
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+    hist.forEach((h, i) => {
+      const x = P.l + W * h.t / tMax, y = P.t + H * (1 - get(h) / max);
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    });
+    ctx.stroke();
+  };
+  line(h => h.F / 4.448, fMax, '#4da3ff');
+  line(h => h.Ptank / PSI, pMax, '#fbbf24');
+  line(h => h.Pc / PSI, pMax, '#4ade80');
+  ctx.fillStyle = '#4da3ff'; ctx.fillText('— Thrust', P.l + 8, P.t + 12);
+  ctx.fillStyle = '#fbbf24'; ctx.fillText('— Tank P', P.l + 78, P.t + 12);
+  ctx.fillStyle = '#4ade80'; ctx.fillText('— Chamber P (right axis)', P.l + 148, P.t + 12);
+}
+
+/* ================= coax designer ================= */
+let coaxCfg = 'fuelCenter';
+function coax() {
+  if (!lastSteady) return;
+  const { hist, inp } = lastSteady;
+  const s = solveInstant({ T: (inp.tOx - 32) / 1.8 }, inp);
+  if (!s) return;
+  const rhoC = coaxCfg === 'fuelCenter' ? RHO_IPA : s.rhoOx;
+  const rhoA = coaxCfg === 'fuelCenter' ? s.rhoOx : RHO_IPA;
+  const mdC = coaxCfg === 'fuelCenter' ? s.mdotF : s.mdotOx;
+  const mdA = coaxCfg === 'fuelCenter' ? s.mdotOx : s.mdotF;
+  const dpC = coaxCfg === 'fuelCenter' ? s.dpF : s.dpOx;
+  const dpA = coaxCfg === 'fuelCenter' ? s.dpOx : s.dpF;
+  const cd = 0.7;
+  const derC = coaxCfg === 'fuelCenter' ? 1 : inp.tp;
+  const derA = coaxCfg === 'fuelCenter' ? inp.tp : 1;
+  // required areas at the solved ΔPs
+  const aC = (mdC / derC) / (cd * Math.sqrt(2 * rhoC * Math.max(1, dpC)));
+  const aA = (mdA / derA) / (cd * Math.sqrt(2 * rhoA * Math.max(1, dpA)));
+  const idC = Math.sqrt(4 * aC / Math.PI) / 0.0254; // in
+  const odPost = idC + 2 * inp.wall;
+  // annulus gap: A = π(g² + OD·g)
+  const aA_in2 = aA / IN2;
+  const g = (-odPost + Math.sqrt(odPost * odPost + 4 * aA_in2 / Math.PI)) / 2;
+  const vC = mdC / (rhoC * aC), vA = mdA / (rhoA * aA);
+  const J = (rhoA * vA * vA) / (rhoC * vC * vC);
+  const recess = inp.recess * odPost;
+  const centerName = coaxCfg === 'fuelCenter' ? 'IPA (fuel)' : 'N₂O (ox)';
+  const annName = coaxCfg === 'fuelCenter' ? 'N₂O (ox)' : 'IPA (fuel)';
+  $('coaxStats').innerHTML =
+    stat(`Center post ID — ${centerName}`, idC.toFixed(3) + '"') +
+    stat('Post OD', odPost.toFixed(3) + '"') +
+    stat(`Annulus gap — ${annName}`, g.toFixed(4) + '"') +
+    stat('Annulus OD', (odPost + 2 * g).toFixed(3) + '"') +
+    stat('Recess depth', recess.toFixed(3) + '"') +
+    stat('Center velocity', (vC * 3.281).toFixed(0) + ' ft/s') +
+    stat('Annulus velocity', (vA * 3.281).toFixed(0) + ' ft/s') +
+    stat('Momentum flux ratio J', J.toFixed(1));
+  const w = [];
+  if (g < inp.minGap) w.push(warn('bad', `⚠ Annulus gap ${g.toFixed(4)}" is below your ${inp.minGap}" machinability floor. Options: switch center propellant (toggle above), thinner post wall, accept lower annulus ΔP (larger gap but weaker atomization), or split into 2–3 smaller elements.`));
+  else w.push(warn('ok', `✓ Gap ${g.toFixed(4)}" is machinable. Concentricity matters more than absolute size — a 0.002" offset in a ${g.toFixed(3)}" gap is a ${(200 * 0.002 / g).toFixed(0)} % flow asymmetry, so bore and turn the mating parts in one setup.`));
+  if (J < 2 || J > 30) w.push(warn('warn', `Momentum flux ratio J = ${J.toFixed(1)} — for decent shear atomization aim J ≈ 5–20 (annulus stream should carry more momentum flux than the core).`));
+  const drillIn = nearestDrill(idC);
+  $('coaxWarnings').innerHTML = w.join('');
+  drawCoax(idC, odPost, g, recess);
+  $('machining').innerHTML = `<table>
+    <tr><th>Op</th><th>Manual machining sequence (2" 6061/303 body)</th></tr>
+    <tr><td>1</td><td>Face &amp; turn body to 2.000" OD; drill/bore center hole through.</td></tr>
+    <tr><td>2</td><td>Bore annulus counterbore to <b>${(odPost + 2 * g).toFixed(3)}"</b> ID to depth (annulus land + recess ${recess.toFixed(3)}").</td></tr>
+    <tr><td>3</td><td>Turn the center post as a separate press-fit/threaded insert: OD <b>${odPost.toFixed(3)}"</b>, drill center passage <b>${drillIn.name}</b> (${drillIn.d.toFixed(3)}") — single setup with the shoulder for concentricity.</td></tr>
+    <tr><td>4</td><td>Cross-drill the ${annName} gallery to feed the annulus from the side port; keep gallery area ≥ 4× annulus area to feed evenly.</td></tr>
+    <tr><td>5</td><td>Recess the post ${recess.toFixed(3)}" behind the face. O-ring grooves per your standard. Water-flow test both circuits: measured CdA goes back into the fields above.</td></tr>
+  </table>
+  <p class="note">Model this in Onshape as two turned parts (body + post insert) — every dimension above is a lathe dimension on purpose. For a scale reference, your old showerhead/scrintle drill sizes map to the same total areas entered up top.</p>`;
+}
+function nearestDrill(d) {
+  const drills = [[0.0465,'#56'],[0.052,'#55'],[0.055,'#54'],[0.0595,'#53'],[0.0625,'1/16'],[0.067,'#51'],[0.070,'#50'],[0.073,'#49'],[0.076,'#48'],[0.0785,'5/64'],[0.081,'#46'],[0.082,'#45'],[0.086,'#44'],[0.089,'#43'],[0.0935,'#42'],[0.0938,'3/32'],[0.096,'#41'],[0.098,'#40'],[0.0995,'#39'],[0.1015,'#38'],[0.104,'#37'],[0.1065,'#36'],[0.1094,'7/64'],[0.111,'#34'],[0.113,'#33'],[0.116,'#32'],[0.120,'#31'],[0.125,'1/8'],[0.136,'#29'],[0.1406,'9/64'],[0.147,'#26'],[0.152,'#24'],[0.157,'#22'],[0.161,'#20'],[0.166,'#19'],[0.1719,'11/64'],[0.180,'#15'],[0.1875,'3/16']];
+  let best = drills[0];
+  for (const dr of drills) if (Math.abs(dr[0] - d) < Math.abs(best[0] - d)) best = dr;
+  return { d: best[0], name: best[1] + ' drill' };
+}
+function drawCoax(idC, odPost, g, recess) {
+  const scale = 1400; // px per inch
+  const cy = 150;
+  const rID = idC / 2 * scale, rOD = odPost / 2 * scale, rAnn = (odPost / 2 + g) * scale;
+  const bodyR = 1.0 * scale * 0.28; // schematic body half-height
+  const faceX = 560, rec = recess * scale;
+  const dim = (x1, y1, x2, y2, label, off = 0) => `
+    <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#4da3ff" stroke-width="1" marker-start="url(#a)" marker-end="url(#a)"/>
+    <text x="${(x1 + x2) / 2 + off}" y="${(y1 + y2) / 2 - 6}" fill="#4da3ff" font-size="12" text-anchor="middle">${label}</text>`;
+  $('drawing').innerHTML = `
+  <svg viewBox="0 0 900 300" xmlns="http://www.w3.org/2000/svg" style="min-width:700px">
+    <defs><marker id="a" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0 4 L8 1 L8 7 z" fill="#4da3ff"/></marker>
+    <pattern id="hatch" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><line x1="0" y1="0" x2="0" y2="6" stroke="#3b4a66" stroke-width="1.5"/></pattern></defs>
+    <text x="20" y="24" fill="#e8edf6" font-size="14" font-weight="700">Coax shear element — half section (schematic, dims exact)</text>
+    <!-- body -->
+    <rect x="120" y="${cy - bodyR - 60}" width="${faceX - 120}" height="${bodyR + 60 - rAnn}" fill="url(#hatch)" stroke="#5b6a7f"/>
+    <rect x="120" y="${cy + rAnn}" width="${faceX - 120}" height="${bodyR + 60 - rAnn}" fill="url(#hatch)" stroke="#5b6a7f"/>
+    <!-- post -->
+    <rect x="120" y="${cy - rOD}" width="${faceX - 120 - rec}" height="${rOD - rID}" fill="url(#hatch)" stroke="#5b6a7f"/>
+    <rect x="120" y="${cy + rID}" width="${faceX - 120 - rec}" height="${rOD - rID}" fill="url(#hatch)" stroke="#5b6a7f"/>
+    <!-- flows -->
+    <line x1="130" y1="${cy}" x2="${faceX + 60}" y2="${cy}" stroke="#4ade80" stroke-width="${Math.max(3, rID)}" opacity="0.5"/>
+    <line x1="130" y1="${cy - (rOD + rAnn) / 2}" x2="${faceX + 40}" y2="${cy - (rOD + rAnn) / 2}" stroke="#fbbf24" stroke-width="${Math.max(2, rAnn - rOD)}" opacity="0.55"/>
+    <line x1="130" y1="${cy + (rOD + rAnn) / 2}" x2="${faceX + 40}" y2="${cy + (rOD + rAnn) / 2}" stroke="#fbbf24" stroke-width="${Math.max(2, rAnn - rOD)}" opacity="0.55"/>
+    <text x="150" y="${cy - (rOD + rAnn) / 2 - 8}" fill="#fbbf24" font-size="12">annulus</text>
+    <text x="150" y="${cy + 4}" fill="#4ade80" font-size="12">center</text>
+    <!-- dims -->
+    ${dim(640, cy - rID, 640, cy + rID, `ID ${idC.toFixed(3)}"`, 46)}
+    ${dim(700, cy - rOD, 700, cy + rOD, `post OD ${odPost.toFixed(3)}"`, 56)}
+    ${dim(770, cy - rAnn, 770, cy + rAnn, `ann OD ${(odPost + 2 * g).toFixed(3)}"`, 56)}
+    ${dim(faceX - rec, cy + rAnn + 26, faceX, cy + rAnn + 26, `recess ${recess.toFixed(3)}"`, 0)}
+    <text x="640" y="${cy + rAnn + 60}" fill="#93a1b8" font-size="12">gap = ${g.toFixed(4)}" per side</text>
+  </svg>`;
+}
+
+/* ================= wire ================= */
+document.getElementById('run').onclick = run;
+document.querySelectorAll('#cfgSeg button').forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll('#cfgSeg button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    coaxCfg = b.dataset.cfg;
+    coax();
+  };
+});
+run();
+</script>
+</body>
+</html>
