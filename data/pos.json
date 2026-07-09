@@ -26,8 +26,8 @@
         "addedBy": "Unknown",
         "addedRid": "",
         "added": "2026-07-09T21:22:28.741Z",
-        "name": "Dull 304 Stainless Steel Strap Hinge",
-        "vendor": "McMasterCarr - 2\" x 4\" Door Leaf, 3-1/2\" x 1-1/2\" Frame Leaf",
+        "name": "Dull 304 Stainless Steel Strap Hinge - 2\" x 4\" Door Leaf, 3-1/2\" x 1-1/2\" Frame Leaf",
+        "vendor": "McMasterCarr",
         "url": "https://www.mcmaster.com/1632A21/",
         "unitCost": 35.02,
         "qty": 2,
@@ -75,9 +75,6 @@
         }
       },
       "McMasterCarr": {
-        "shipping": 0
-      },
-      "McMasterCarr - 2\" x 4\" Door Leaf, 3-1/2\" x 1-1/2\" Frame Leaf": {
         "shipping": 0
       }
     }
