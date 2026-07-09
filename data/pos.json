@@ -20,6 +20,20 @@
         "team": "engine",
         "justification": "Fittings for gas tanks",
         "delivery": "Delivery"
+      },
+      {
+        "id": "mre0j211wiib",
+        "addedBy": "Unknown",
+        "addedRid": "",
+        "added": "2026-07-09T21:22:28.741Z",
+        "name": "Dull 304 Stainless Steel Strap Hinge",
+        "vendor": "McMasterCarr",
+        "url": "https://www.mcmaster.com/1632A21/",
+        "unitCost": 35.02,
+        "qty": 2,
+        "team": "gse",
+        "justification": "Antenna Mounting",
+        "delivery": "Delivery"
       }
     ],
     "vendors": {
@@ -31,6 +45,9 @@
           "by": "Grant Stec",
           "date": "2026-07-08T18:39:08.427Z"
         }
+      },
+      "McMasterCarr": {
+        "shipping": 0
       }
     }
   },
