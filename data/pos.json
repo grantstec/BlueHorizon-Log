@@ -48,6 +48,20 @@
         "team": "gse",
         "justification": "Antenna Mounting",
         "delivery": "Delivery"
+      },
+      {
+        "id": "mre1279z54wl",
+        "addedBy": "Unknown",
+        "addedRid": "",
+        "added": "2026-07-09T21:37:22.007Z",
+        "name": "18-8 Stainless Steel Socket Head Screw - 10-32 Thread Size, 4-1/2\" Long, Partially Threaded",
+        "vendor": "McMasterCarr",
+        "url": "https://www.mcmaster.com/92196A287/",
+        "unitCost": 3.28,
+        "qty": 2,
+        "team": "gse",
+        "justification": "Antenna Mounting",
+        "delivery": "Delivery"
       }
     ],
     "vendors": {
