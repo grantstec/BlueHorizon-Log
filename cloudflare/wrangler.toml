@@ -1,0 +1,16 @@
+name = "bluehorizon-portal"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+GH_REPO = "grantstec/BlueHorizon-Log"
+ALLOWED_ORIGIN = "https://grantstec.github.io"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bluehorizon"
+database_id = "REPLACE_AFTER_CREATING_DB"
+
+# Secrets (set via: wrangler secret put <NAME>, or dashboard):
+#   GH_TOKEN        - fine-grained PAT, Contents R/W on GH_REPO only
+#   SESSION_SECRET  - any long random string (e.g. 64 hex chars)
