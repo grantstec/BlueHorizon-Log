@@ -212,6 +212,7 @@
       <button class="more-item" id="moreOnboard">🚀 New member onboarding</button>
       <button class="more-item" id="moreJournal">📓 Write weekly journal</button>
       <button class="more-item" id="moreHero">🎬 Update public site hero video</button>
+      <button class="more-item" id="moreNewRepo">🗃 New GitHub repo (club org)</button>
       <input id="heroInput" type="file" accept="video/mp4,video/webm" hidden>
     </div>
   </div>
@@ -313,6 +314,27 @@
   </div>
 </div>
 
+<!-- ===== New GitHub repo ===== -->
+<div id="repoSheet" class="sheet hidden">
+  <div class="sheet-card">
+    <div class="sheet-head">
+      <button class="text-btn" id="repoCancel">Cancel</button>
+      <span class="sheet-title">New Club Repo</span>
+      <button class="text-btn primary" id="repoCreate">Create</button>
+    </div>
+    <div class="sheet-body">
+      <p class="settings-note">Creates a repository in <b>github.com/USAFA-Blue-Horizon</b> — for flight computer boards, code, CAD exports, anything worth version-controlling.</p>
+      <input id="repoName" class="input" type="text" placeholder="Repo name — e.g. flight-computer-v2">
+      <input id="repoDesc" class="input" type="text" placeholder="Short description">
+      <div class="seg" id="repoVisSeg" style="align-self:flex-start">
+        <button class="seg-btn active" data-vis="public">Public</button>
+        <button class="seg-btn" data-vis="private">Private</button>
+      </div>
+      <p class="settings-note" id="repoResult"></p>
+    </div>
+  </div>
+</div>
+
 <!-- ===== Login / signup ===== -->
 <div id="authSheet" class="sheet hidden">
   <div class="sheet-card">
@@ -325,6 +347,7 @@
       <input id="authUser" class="input" type="text" autocomplete="username" placeholder="Username">
       <input id="authPass" class="input" type="password" autocomplete="current-password" placeholder="Password">
       <input id="authName" class="input hidden" type="text" placeholder="Full name (shown on your work)">
+      <input id="authEmail" class="input hidden" type="email" placeholder="Email (optional — for task & journal reminders)">
       <button class="btn-primary" id="authSubmit">Sign in</button>
       <p class="settings-note" id="authMsg"></p>
       <button class="text-btn" id="authToggle">New here? Create an account</button>

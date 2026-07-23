@@ -28,7 +28,7 @@ const DEFAULT_PROJECTS = [
 ];
 
 /* Club defaults — new devices work out of the box; Settings can still override. */
-const DEFAULT_REPO = 'grantstec/BlueHorizon-Log';
+const DEFAULT_REPO = 'USAFA-Blue-Horizon/BlueHorizon-Log';
 const DEFAULT_PORTAL = 'https://bluehorizon-portal.stecgrant89.workers.dev';
 
 const cfg = {
@@ -234,6 +234,11 @@ async function loadAll(showSpinner = true) {
 }
 
 function maybeAskWho() {
+  // account mode: identity comes from the account — never nag with pickers
+  if (cfg.portalMode) {
+    if (cfg.signedIn && !cfg.rid) linkRosterIdentity();
+    return;
+  }
   // brand-new members (or invite-link arrivals) get the full onboarding wizard
   if (state.roster.length && !cfg.rid && !localStorage.getItem('bh_onboarded') && !localStorage.getItem('bh_who_skipped')) {
     openOnboarding();
@@ -1025,6 +1030,14 @@ async function autofillFromLink() {
   const note = $('piAutofillNote');
   const status = (msg) => { note.textContent = msg; };
   if (!$('piVendor').value) $('piVendor').value = vendorFromUrl(url);
+  // McMaster blocks ALL automated reads (bots, proxies, even server-side) —
+  // extract the part number from the URL instead of erroring out.
+  if (/mcmaster\.com/i.test(url)) {
+    const pm = url.match(/mcmaster\.com\/([A-Za-z0-9-]+)/);
+    if (pm && !$('piName').value) $('piName').value = `McMaster ${pm[1]}`;
+    status('McMaster blocks all robots — part number filled from the link; copy the price and full name from their page.');
+    return;
+  }
   status('Fetching product page…');
   try {
     let info = null;
@@ -1981,7 +1994,37 @@ function renderAuthMode() {
   $('authTitle').textContent = signup ? 'Create account' : 'Sign in';
   $('authSubmit').textContent = signup ? 'Create account' : 'Sign in';
   $('authName').classList.toggle('hidden', !signup);
+  $('authEmail').classList.toggle('hidden', !signup);
   $('authToggle').textContent = signup ? 'Have an account? Sign in' : 'New here? Create an account';
+}
+
+/* After sign-in, tie the account to the team roster automatically —
+   no pickers, no settings. Creates the roster entry if it doesn't exist. */
+async function linkRosterIdentity() {
+  if (!cfg.name) return;
+  let m = state.roster.find((x) => x.name.toLowerCase() === cfg.name.toLowerCase());
+  if (!m && cfg.canWrite) {
+    const id = slug(cfg.name);
+    try {
+      await api.updateJson('data/roster.json',
+        (cur) => {
+          const list = Array.isArray(cur) ? cur : [];
+          if (list.some((x) => x.id === id)) return list;
+          return [...list, { id, name: cfg.name }].sort((a, b) => a.name.localeCompare(b.name));
+        }, `roster: add ${cfg.name} (account)`);
+      m = { id, name: cfg.name };
+      state.roster.push(m);
+    } catch { /* pending users can't write — linked on first approval */ }
+  }
+  if (m) {
+    cfg.set('rid', m.id);
+    fetch(`${cfg.portal}/api/profile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.session}` },
+      body: JSON.stringify({ rid: m.id }),
+    }).catch(() => {});
+  }
+  localStorage.setItem('bh_onboarded', '1'); // accounts replace the who-picker
 }
 
 async function submitAuth() {
@@ -1992,6 +2035,7 @@ async function submitAuth() {
   const body = { username, password };
   if (authMode === 'signup') {
     body.name = $('authName').value.trim();
+    body.email = $('authEmail').value.trim();
     if (!body.name) { msg.textContent = 'Name required.'; return; }
   }
   msg.textContent = 'Working…';
@@ -2006,6 +2050,7 @@ async function submitAuth() {
     cfg.set('name', j.name);
     $('authSheet').classList.add('hidden');
     toast(j.message || `Signed in as ${j.name} ✓`);
+    await linkRosterIdentity();
     render();
     loadAll(false);
     if (j.role === 'pending') toast('Account created — ask your admin to approve you', true);
@@ -2100,6 +2145,45 @@ function wire() {
   $('authToggle').onclick = () => { authMode = authMode === 'login' ? 'signup' : 'login'; renderAuthMode(); };
   $('authAdvanced').onclick = () => { $('authSheet').classList.add('hidden'); openSettings(); };
   $('authPass').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitAuth(); });
+
+  // new club repo (org)
+  $('moreNewRepo').onclick = () => {
+    $('moreSheet').classList.add('hidden');
+    if (!requireToken()) return;
+    if (cfg.portalMode && !['admin', 'lead'].includes(cfg.role)) { toast('Leads and admins only', true); return; }
+    $('repoName').value = '';
+    $('repoDesc').value = '';
+    $('repoResult').textContent = '';
+    $('repoSheet').classList.remove('hidden');
+  };
+  $('repoCancel').onclick = () => $('repoSheet').classList.add('hidden');
+  document.querySelectorAll('#repoVisSeg .seg-btn').forEach((b) => {
+    b.onclick = () => {
+      document.querySelectorAll('#repoVisSeg .seg-btn').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+    };
+  });
+  $('repoCreate').onclick = async () => {
+    const name = $('repoName').value.trim();
+    if (!name) { toast('Repo name required', true); return; }
+    const out = $('repoResult');
+    out.textContent = 'Creating…';
+    try {
+      const r = await fetch(`${cfg.portal}/api/repos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.session}` },
+        body: JSON.stringify({
+          name,
+          description: $('repoDesc').value.trim(),
+          isPrivate: document.querySelector('#repoVisSeg .seg-btn.active').dataset.vis === 'private',
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) { out.textContent = '✗ ' + (j.error || r.status); return; }
+      out.innerHTML = `✓ Created — <a href="${esc(j.url)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(j.fullName)}</a>`;
+      toast('Repo created ✓');
+    } catch (e) { out.textContent = '✗ ' + e.message; }
+  };
 
   // hero video (public site) uploader
   $('moreHero').onclick = () => {
@@ -2237,7 +2321,7 @@ function wire() {
   $('sheetViewerClose').onclick = () => $('sheetViewer').classList.add('hidden');
   $('whoSkip').onclick = () => { localStorage.setItem('bh_who_skipped', '1'); $('whoSheet').classList.add('hidden'); };
 
-  ['compose', 'entrySheet', 'settings', 'moreSheet', 'taskSheet', 'searchOverlay', 'sheetViewer', 'profileSheet', 'poItemSheet', 'authSheet'].forEach((id) => {
+  ['compose', 'entrySheet', 'settings', 'moreSheet', 'taskSheet', 'searchOverlay', 'sheetViewer', 'profileSheet', 'poItemSheet', 'authSheet', 'repoSheet'].forEach((id) => {
     $(id).addEventListener('click', (e) => { if (e.target === $(id)) $(id).classList.add('hidden'); });
   });
 }

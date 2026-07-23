@@ -272,7 +272,7 @@ document.querySelectorAll('.reveal').forEach(el => io.observe(el));
 (async () => {
   const strip = document.getElementById('logStrip');
   try {
-    const base = 'https://raw.githubusercontent.com/grantstec/BlueHorizon-Log/main/';
+    const base = 'https://raw.githubusercontent.com/USAFA-Blue-Horizon/BlueHorizon-Log/main/';
     const idx = await fetch(base + 'data/index.json').then(r => r.json());
     const pub = idx.filter(e => e.type !== 'meeting').slice(0, 6);
     if (!pub.length) throw new Error('empty');
