@@ -89,6 +89,20 @@
         "team": "flight-computer",
         "justification": "PCB Soldering",
         "delivery": "Delivery"
+      },
+      {
+        "id": "mry1sx3rvuvw",
+        "addedBy": "Grant Stec",
+        "addedRid": "grant-stec",
+        "added": "2026-07-23T21:53:32.055Z",
+        "name": "Fine tip curved tweezers - ESD safe",
+        "vendor": "Adafruit",
+        "url": "https://www.adafruit.com/product/422",
+        "unitCost": 3.95,
+        "qty": 1,
+        "team": "flight-computer",
+        "justification": "PCB Soldering",
+        "delivery": "Delivery"
       }
     ],
     "vendors": {
