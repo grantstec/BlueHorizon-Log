@@ -46,7 +46,13 @@
         }
       },
       "Digital Era, LLC": {
-        "shipping": 0
+        "shipping": 0,
+        "s889": {
+          "status": "COMPLIANT",
+          "legalName": "DIGITAL ERA, LLC",
+          "by": "Grant Stec",
+          "date": "2026-07-23T21:44:43.993Z"
+        }
       }
     }
   },
