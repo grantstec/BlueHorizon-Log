@@ -40,6 +40,9 @@ export default {
       else if (p === '/api/me') res = await me(request, env);
       else if (p === '/api/users' && request.method === 'GET') res = await listUsers(request, env);
       else if (p === '/api/users/role' && request.method === 'POST') res = await setRole(request, env);
+      else if (p === '/api/profile' && request.method === 'POST') res = await updateProfile(request, env);
+      else if (p === '/api/emails' && request.method === 'GET') res = await exportEmails(request, env);
+      else if (p === '/api/repos' && request.method === 'POST') res = await createRepo(request, env);
       else if (p.startsWith('/api/gh/')) res = await ghProxy(request, env, p.slice('/api/gh/'.length) + url.search);
       else if (p === '/api/fetch') res = await pageFetch(request, env, url);
       else if (p === '/api/889') res = await gsa889(request, env, url);
@@ -124,7 +127,7 @@ const hexToBytes = (h) => new Uint8Array(h.match(/../g).map((x) => parseInt(x, 1
 /* ---------------- accounts ---------------- */
 
 async function signup(request, env) {
-  const { username, password, name } = await request.json();
+  const { username, password, name, email } = await request.json();
   const u = String(username || '').trim().toLowerCase();
   if (!/^[a-z0-9._-]{3,24}$/.test(u)) return json({ error: 'username: 3–24 chars, letters/numbers/._-' }, 400);
   if (!password || password.length < 8) return json({ error: 'password must be at least 8 characters' }, 400);
@@ -134,8 +137,9 @@ async function signup(request, env) {
   const { hash, salt } = await hashPassword(password);
   try {
     await env.DB.prepare(
-      'INSERT INTO users (username, name, pass_hash, salt, role, created) VALUES (?,?,?,?,?,?)')
-      .bind(u, name.trim().slice(0, 60), hash, salt, role, new Date().toISOString()).run();
+      'INSERT INTO users (username, name, pass_hash, salt, role, created, email) VALUES (?,?,?,?,?,?,?)')
+      .bind(u, name.trim().slice(0, 60), hash, salt, role, new Date().toISOString(),
+        (email || '').trim().slice(0, 120) || null).run();
   } catch {
     return json({ error: 'username already taken' }, 409);
   }
@@ -177,6 +181,61 @@ async function setRole(request, env) {
   if (!ROLES.includes(role)) return json({ error: 'bad role' }, 400);
   await env.DB.prepare('UPDATE users SET role = ? WHERE username = ?').bind(role, username).run();
   return json({ ok: true });
+}
+
+/* update your own email / roster link */
+async function updateProfile(request, env) {
+  const user = await auth(request, env);
+  const { email, rid } = await request.json();
+  if (email !== undefined) {
+    await env.DB.prepare('UPDATE users SET email = ? WHERE username = ?')
+      .bind((email || '').trim().slice(0, 120) || null, user.username).run();
+  }
+  if (rid !== undefined) {
+    await env.DB.prepare('UPDATE users SET rid = ? WHERE username = ?')
+      .bind(String(rid || '').slice(0, 60) || null, user.username).run();
+  }
+  return json({ ok: true });
+}
+
+/* email export for the reminder GitHub Action — guarded by ACTION_KEY secret */
+async function exportEmails(request, env) {
+  const key = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!env.ACTION_KEY || key !== env.ACTION_KEY) {
+    return json({ error: 'forbidden' }, 403);
+  }
+  const { results } = await env.DB.prepare(
+    'SELECT username, name, email, rid FROM users WHERE email IS NOT NULL AND role != ?')
+    .bind('pending').all();
+  return json(results);
+}
+
+/* create a repo in the club GitHub org (leads/admins) */
+async function createRepo(request, env) {
+  await auth(request, env, 'lead');
+  const { name, description, isPrivate } = await request.json();
+  const clean = String(name || '').trim().replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 90);
+  if (!clean) return json({ error: 'repo name required' }, 400);
+  const org = env.GH_ORG || 'USAFA-Blue-Horizon';
+  const token = env.GH_ORG_TOKEN || env.GH_TOKEN;
+  const r = await fetch(`https://api.github.com/orgs/${org}/repos`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'bluehorizon-portal-worker',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: clean,
+      description: String(description || '').slice(0, 250),
+      private: !!isPrivate,
+      auto_init: true,
+    }),
+  });
+  const j = await r.json();
+  if (!r.ok) return json({ error: j.message || `GitHub ${r.status}` }, r.status);
+  return json({ ok: true, url: j.html_url, fullName: j.full_name });
 }
 
 /* ---------------- GitHub proxy (the shared token lives HERE, server-side) ---------------- */
