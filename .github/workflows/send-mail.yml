@@ -1,0 +1,42 @@
+name: Send queued mail
+
+# The portal Worker drops mail jobs into data/mail/outbox/*.json (e.g. password
+# resets). This fires on that push and sends them via the club Gmail, then
+# deletes the processed files. Reuses the same MAIL_USERNAME / MAIL_PASSWORD.
+
+on:
+  push:
+    paths:
+      - "data/mail/outbox/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: send-mail
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Send queued mail
+        env:
+          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          SMTP_SERVER: ${{ vars.SMTP_SERVER || 'smtp.gmail.com' }}
+        run: python scripts/send_mail.py
+      - name: Remove sent mail
+        run: |
+          git config user.name "bh-mail-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A data/mail/outbox
+          git commit -m "mail: sent" || echo "nothing to commit"
+          git pull --rebase origin main || true
+          git push
