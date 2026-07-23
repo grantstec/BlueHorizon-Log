@@ -117,6 +117,20 @@
         "team": "flight-computer",
         "justification": "Soldering PCBs",
         "delivery": "Delivery"
+      },
+      {
+        "id": "mry1v8aewnm2",
+        "addedBy": "Grant Stec",
+        "addedRid": "grant-stec",
+        "added": "2026-07-23T21:55:19.862Z",
+        "name": "Chip Quik No-Clean Liquid Flux Pen – 10ml Pen w/ Tip",
+        "vendor": "Adafruit",
+        "url": "https://www.adafruit.com/product/3468",
+        "unitCost": 7.95,
+        "qty": 3,
+        "team": "flight-computer",
+        "justification": "Soldering PCBs",
+        "delivery": "Delivery"
       }
     ],
     "vendors": {
