@@ -75,6 +75,20 @@
         "team": "flight-computer",
         "justification": "Soldering PCBs",
         "delivery": "Delivery"
+      },
+      {
+        "id": "mry1s4lurdog",
+        "addedBy": "Grant Stec",
+        "addedRid": "grant-stec",
+        "added": "2026-07-23T21:52:55.122Z",
+        "name": "Precision Straight Tweezers - Rhino SW-11",
+        "vendor": "Adafruit",
+        "url": "https://www.adafruit.com/product/3096",
+        "unitCost": 9.95,
+        "qty": 1,
+        "team": "flight-computer",
+        "justification": "PCB Soldering",
+        "delivery": "Delivery"
       }
     ],
     "vendors": {
