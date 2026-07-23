@@ -131,6 +131,20 @@
         "team": "flight-computer",
         "justification": "Soldering PCBs",
         "delivery": "Delivery"
+      },
+      {
+        "id": "mry1vvjvf38r",
+        "addedBy": "Grant Stec",
+        "addedRid": "grant-stec",
+        "added": "2026-07-23T21:55:50.011Z",
+        "name": "ESD-Safe PCB Cleaning Brush",
+        "vendor": "Adafruit",
+        "url": "https://www.adafruit.com/product/1209",
+        "unitCost": 2.95,
+        "qty": 2,
+        "team": "flight-computer",
+        "justification": "PCB Cleaning Brush",
+        "delivery": "Delivery"
       }
     ],
     "vendors": {
