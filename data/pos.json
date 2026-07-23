@@ -61,6 +61,20 @@
         "team": "flight-computer",
         "justification": "Soldering PCBs",
         "delivery": "Delivery"
+      },
+      {
+        "id": "mry1rcjx3hyg",
+        "addedBy": "Grant Stec",
+        "addedRid": "grant-stec",
+        "added": "2026-07-23T21:52:18.765Z",
+        "name": "Engineer Professional Silicone-Tip Solder Sucker",
+        "vendor": "Adafruit",
+        "url": "https://www.adafruit.com/product/1597",
+        "unitCost": 19.5,
+        "qty": 1,
+        "team": "flight-computer",
+        "justification": "Soldering PCBs",
+        "delivery": "Delivery"
       }
     ],
     "vendors": {
